@@ -1,5 +1,7 @@
 # Meridian
 
+**Live → https://offport.github.io/meridian/**
+
 A minimal world clock — tell the time across zones at a glance.
 
 - **Your local time** up top, with the day/date and UTC offset.
