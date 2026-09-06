@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Meridian</title>
+<meta name="description" content="Tell the time across time zones — a minimal world clock. Add and remove cities, scrub a slider to compare any hour.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='13' fill='none' stroke='%2335D6F5' stroke-width='2'/%3E%3Cpath d='M16 8v8l6 3' fill='none' stroke='%2335D6F5' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<meta name="theme-color" content="#05090F">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#05090F; --panel:#0A131B; --panel2:#0D1822; --line:#16303F; --line2:#1F4657; --grid:#0F2130;
+    --ink:#DCEEF7; --ink2:#8FB3C6; --ink3:#5E8093;
+    --accent:#35D6F5; --accent-dim:rgba(53,214,245,.5); --accent-soft:rgba(53,214,245,.09);
+    --warm:#F5B942; --rm:#FF6B6B;
+    --bracket:rgba(53,214,245,.42);
+    --sans:'Rajdhani',ui-sans-serif,system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+    --mono:'IBM Plex Mono',ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    background:var(--bg); color:var(--ink); font-family:var(--sans); font-size:16px; line-height:1.4;
+    -webkit-font-smoothing:antialiased; min-height:100vh;
+    background-image:
+      linear-gradient(rgba(53,214,245,.05) 1px,transparent 1px),
+      linear-gradient(90deg,rgba(53,214,245,.05) 1px,transparent 1px);
+    background-size:44px 44px;
+    display:flex; flex-direction:column; align-items:center;
+  }
+  /* faint scanlines, HUD */
+  body::after{content:"";position:fixed;inset:0;pointer-events:none;z-index:99;
+    background:repeating-linear-gradient(0deg,rgba(0,0,0,.16) 0 1px,transparent 1px 3px);mix-blend-mode:multiply}
+  .wrap{width:100%;max-width:600px;padding:26px 18px 60px}
+
+  header.app{display:flex;align-items:center;gap:12px;margin-bottom:20px}
+  .logo{width:34px;height:34px;flex:0 0 auto;filter:drop-shadow(0 0 8px var(--accent-dim))}
+  header.app h1{margin:0;font-size:23px;font-weight:700;letter-spacing:.16em;color:var(--accent);text-shadow:0 0 14px rgba(53,214,245,.4)}
+  header.app .sub{display:block;font-size:11px;font-weight:600;letter-spacing:.2em;color:var(--ink3);text-transform:uppercase;margin-top:2px}
+
+  .card{position:relative;background:var(--panel);border:1px solid var(--line);padding:18px 16px;margin-bottom:16px}
+  .card::before,.card::after{content:"";position:absolute;width:13px;height:13px;border-color:var(--bracket);border-style:solid;filter:drop-shadow(0 0 4px var(--accent-dim))}
+  .card::before{top:-1px;left:-1px;border-width:2px 0 0 2px}
+  .card::after{bottom:-1px;right:-1px;border-width:0 2px 2px 0}
+  .eyebrow{font-size:9.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink3);font-weight:600}
+
+  /* local time — the reference */
+  .local{display:flex;align-items:flex-end;justify-content:space-between;gap:14px;flex-wrap:wrap}
+  .local .who{min-width:0}
+  .local .city{font-size:17px;font-weight:600;letter-spacing:.02em;margin-top:3px}
+  .local .off{font-family:var(--mono);font-size:11px;color:var(--ink3);letter-spacing:.06em}
+  .local .clk{text-align:right}
+  .local .t{font-family:var(--mono);font-weight:600;font-size:38px;line-height:1;color:var(--accent);font-variant-numeric:tabular-nums;letter-spacing:.02em;text-shadow:0 0 16px rgba(53,214,245,.3)}
+  .local .d{font-family:var(--mono);font-size:11.5px;color:var(--ink2);margin-top:5px}
+
+  /* reference slider */
+  .ref{margin-top:16px;padding-top:14px;border-top:1px solid var(--grid)}
+  .ref input[type=range]{width:100%;accent-color:var(--accent);cursor:pointer;height:22px}
+  .ref-row{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:6px}
+  .ref-lbl{font-size:12px;color:var(--ink2);letter-spacing:.03em}
+  .ref-lbl.pinned{color:var(--warm)}
+
+  .btn{background:var(--panel2);border:1px solid var(--line2);color:var(--ink2);font-family:var(--sans);
+    font-weight:600;font-size:12px;letter-spacing:.08em;padding:6px 13px;cursor:pointer;text-transform:uppercase}
+  .btn:hover{border-color:var(--accent);color:var(--accent)}
+  .btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+  /* zone list */
+  .zones{display:flex;flex-direction:column}
+  .row{display:grid;grid-template-columns:1fr auto 26px;align-items:center;gap:14px;padding:13px 2px;border-bottom:1px solid var(--grid)}
+  .row:last-child{border-bottom:0}
+  .row .left{min-width:0}
+  .row .city{font-weight:600;letter-spacing:.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .row .meta{display:flex;gap:8px;align-items:center;margin-top:2px}
+  .row .off{font-family:var(--mono);font-size:10.5px;color:var(--ink3);letter-spacing:.05em}
+  .row .diff{font-family:var(--mono);font-size:9.5px;font-weight:500;letter-spacing:.04em;padding:1px 5px;border:1px solid var(--line2);color:var(--ink3)}
+  .row .diff.ahead{color:var(--accent);border-color:var(--accent-dim)}
+  .row .diff.behind{color:var(--warm);border-color:rgba(245,185,66,.45)}
+  .row .right{text-align:right;flex:0 0 auto}
+  .row .t{font-family:var(--mono);font-size:23px;font-weight:600;color:var(--ink);font-variant-numeric:tabular-nums;line-height:1;letter-spacing:.02em}
+  .row .d{font-family:var(--mono);font-size:10.5px;color:var(--ink3);margin-top:3px}
+  .rm{width:26px;height:26px;border-radius:6px;background:none;border:1px solid transparent;color:var(--ink3);
+    font-size:16px;line-height:1;cursor:pointer;display:grid;place-items:center}
+  .rm:hover{color:var(--rm);border-color:rgba(255,107,107,.5)}
+  .empty{padding:22px 6px;text-align:center;color:var(--ink3);font-size:13px}
+
+  /* add */
+  .add{display:flex;gap:8px;margin-top:14px}
+  .add input{flex:1;min-width:0;background:var(--bg);border:1px solid var(--line);color:var(--ink);
+    font-family:var(--mono);font-size:13px;padding:9px 11px;letter-spacing:.02em}
+  .add input::placeholder{color:var(--ink3)}
+  .add input:focus{outline:none;border-color:var(--accent)}
+  .add input.bad{border-color:var(--rm)}
+
+  .note{font-size:11.5px;color:var(--ink3);line-height:1.6;text-align:center;margin:4px 0 0}
+  .note b{color:var(--ink2);font-weight:600}
+
+  @media(max-width:420px){
+    .local .t{font-size:32px}
+    .row .t{font-size:20px}
+    .wrap{padding:20px 12px 48px}
+  }
+  @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="app">
+    <svg class="logo" viewBox="0 0 32 32" aria-hidden="true">
+      <circle cx="16" cy="16" r="13" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--accent)"/>
+      <path d="M16 8v8l6 3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--accent)"/>
+    </svg>
+    <div><h1>MERIDIAN<span class="sub">Time across zones</span></h1></div>
+  </header>
+
+  <!-- your local time + the reference slider -->
+  <section class="card">
+    <span class="eyebrow" id="refEyebrow">Your time</span>
+    <div class="local">
+      <div class="who">
+        <div class="city" id="locCity">&mdash;</div>
+        <div class="off" id="locOff">&mdash;</div>
+      </div>
+      <div class="clk">
+        <div class="t" id="locTime">--:--:--</div>
+        <div class="d" id="locDate">&mdash;</div>
+      </div>
+    </div>
+    <div class="ref">
+      <input type="range" id="slider" min="0" max="1439" step="5" value="0" aria-label="Reference time of day">
+      <div class="ref-row">
+        <span class="ref-lbl" id="refLbl">Live &middot; now</span>
+        <button class="btn" id="nowBtn">Now</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- zones -->
+  <section class="card">
+    <span class="eyebrow">Zones</span>
+    <div class="zones" id="zones"></div>
+    <div class="add">
+      <input id="addInput" list="zoneList" placeholder="Add a city or timezone…" spellcheck="false" autocomplete="off">
+      <datalist id="zoneList"></datalist>
+      <button class="btn" id="addBtn">Add</button>
+    </div>
+    <p class="note"><b>Add</b> any city or IANA zone &middot; <b>&times;</b> to remove &middot; drag the slider to see any hour everywhere at once. Saved in this browser.</p>
+  </section>
+</div>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const LZ = Intl.DateTimeFormat().resolvedOptions().timeZone;   // your local zone
+  const KEY = "meridian.zones";
+  const DEFAULT = [
+    ["Toronto","America/Toronto"], ["London","Europe/London"], ["Dubai","Asia/Dubai"],
+    ["Tokyo","Asia/Tokyo"], ["Los Angeles","America/Los_Angeles"],
+  ];
+
+  const load = () => { try { const a = JSON.parse(localStorage.getItem(KEY)); if (Array.isArray(a)) return a; } catch(e){} return DEFAULT.slice(); };
+  const save = () => { try { localStorage.setItem(KEY, JSON.stringify(ZONES)); } catch(e){} };
+  let ZONES = load();
+  let pinned = null;   // minutes-of-day in your LOCAL zone, or null = live "now"
+
+  // The instant at which a given wall-clock time occurs in a zone (handles DST).
+  function zonedToInstant(zone, y, mo, d, hh, mm){
+    const asUTC = Date.UTC(y, mo, d, hh, mm);
+    const p = new Intl.DateTimeFormat("en-US",{timeZone:zone,year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hour12:false}).formatToParts(new Date(asUTC));
+    const g = t => +p.find(x => x.type===t).value;
+    const wall = Date.UTC(g("year"), g("month")-1, g("day"), g("hour")%24, g("minute"));
+    return asUTC - (wall - asUTC);
+  }
+  // The reference instant: "now", or the pinned local wall-clock time on today's local date.
+  function refDate(){
+    if (pinned == null) return new Date();
+    const p = new Intl.DateTimeFormat("en-CA",{timeZone:LZ,year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(new Date());
+    const g = t => +p.find(x => x.type===t).value;
+    return new Date(zonedToInstant(LZ, g("year"), g("month")-1, g("day"), Math.floor(pinned/60), pinned%60));
+  }
+  const partsIn = (tz, d) => { const o = {}; new Intl.DateTimeFormat("en-CA",{timeZone:tz,year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(d).forEach(x=>o[x.type]=+x.value); return o; };
+  function offset(tz, d){
+    try{ const p = new Intl.DateTimeFormat("en-US",{timeZone:tz,timeZoneName:"shortOffset"}).formatToParts(d).find(x=>x.type==="timeZoneName");
+      return p ? p.value.replace("GMT","UTC") : ""; }catch(e){ return ""; }
+  }
+  const fmtT = (tz, d) => { try { return new Intl.DateTimeFormat("en-GB",{timeZone:tz,hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false}).format(d); } catch(e){ return "--:--:--"; } };
+  const fmtD = (tz, d) => { try { return new Intl.DateTimeFormat("en-GB",{timeZone:tz,weekday:"short",day:"2-digit",month:"short"}).format(d); } catch(e){ return ""; } };
+  // whole-day difference of a zone's calendar date vs your local date at the same instant
+  function dayDiff(tz, d, locP){
+    const z = partsIn(tz, d);
+    const delta = Math.round((Date.UTC(z.year,z.month-1,z.day) - Date.UTC(locP.year,locP.month-1,locP.day)) / 86400000);
+    if (delta === 0) return "";
+    if (delta === 1) return "next day"; if (delta === -1) return "prev day";
+    return (delta>0?"+":"") + delta + "d";
+  }
+  const esc = x => String(x).replace(/[<>&"]/g, c => ({"<":"&lt;",">":"&gt;","&":"&amp;",'"':"&quot;"}[c]));
+  const cityOf = tz => tz.split("/").pop().replace(/_/g," ");
+
+  function render(){
+    const d = refDate();
+    const locP = partsIn(LZ, d);
+
+    // local header
+    $("locCity").textContent = cityOf(LZ);
+    $("locOff").textContent = offset(LZ, d);
+    $("locTime").textContent = fmtT(LZ, d);
+    $("locDate").textContent = fmtD(LZ, d);
+    $("refEyebrow").textContent = pinned == null ? "Your time · live" : "Your time · pinned";
+
+    // zones
+    const box = $("zones");
+    if (!ZONES.length){ box.innerHTML = '<div class="empty">No zones yet — add a city below.</div>'; }
+    else box.innerHTML = ZONES.map(([city, tz], i) => {
+      const diff = dayDiff(tz, d, locP);
+      const cls = diff ? (diff.startsWith("prev") || diff.startsWith("-") ? "behind" : "ahead") : "";
+      return '<div class="row"><div class="left"><div class="city">'+esc(city)+'</div>'
+        + '<div class="meta"><span class="off">'+esc(offset(tz,d))+'</span>'
+        + (diff ? '<span class="diff '+cls+'">'+esc(diff)+'</span>' : '')+'</div></div>'
+        + '<div class="right"><div class="t">'+fmtT(tz,d)+'</div><div class="d">'+fmtD(tz,d)+'</div></div>'
+        + '<button class="rm" data-i="'+i+'" title="Remove '+esc(city)+'" aria-label="Remove '+esc(city)+'">&times;</button></div>';
+    }).join("");
+    box.querySelectorAll(".rm").forEach(b => b.addEventListener("click", () => { ZONES.splice(+b.dataset.i,1); save(); render(); }));
+
+    // slider tracks live local time when not pinned
+    if (pinned == null){
+      const hm = new Intl.DateTimeFormat("en-GB",{timeZone:LZ,hour:"2-digit",minute:"2-digit",hour12:false}).format(d).split(":");
+      $("slider").value = (+hm[0])*60 + (+hm[1]);
+    }
+    const lbl = $("refLbl");
+    lbl.classList.toggle("pinned", pinned != null);
+    lbl.textContent = pinned == null ? "Live · now"
+      : "When your clock reads " + String(Math.floor(pinned/60)).padStart(2,"0") + ":" + String(pinned%60).padStart(2,"0");
+  }
+
+  // add / remove
+  let ZLIST = [];
+  try { ZLIST = Intl.supportedValuesOf ? Intl.supportedValuesOf("timeZone") : []; } catch(e){}
+  if (!ZLIST.length) ZLIST = ["America/Toronto","America/New_York","America/Los_Angeles","America/Chicago","America/Sao_Paulo","Europe/London","Europe/Paris","Europe/Berlin","Europe/Moscow","Europe/Istanbul","Africa/Cairo","Asia/Dubai","Asia/Riyadh","Asia/Tehran","Asia/Karachi","Asia/Kolkata","Asia/Dhaka","Asia/Bangkok","Asia/Singapore","Asia/Shanghai","Asia/Tokyo","Asia/Seoul","Australia/Sydney","Pacific/Auckland"];
+  $("zoneList").innerHTML = ZLIST.map(z => '<option value="'+z+'"></option>').join("");
+
+  function addZone(){
+    const inp = $("addInput");
+    const v = (inp.value || "").trim();
+    if (!v){ inp.focus(); return; }
+    let tz = ZLIST.find(z => z.toLowerCase() === v.toLowerCase())
+      || ZLIST.find(z => cityOf(z).toLowerCase() === v.toLowerCase());
+    if (!tz){ try { new Intl.DateTimeFormat("en",{timeZone:v}); tz = v; } catch(e){} }
+    if (!tz){ inp.classList.add("bad"); return; }
+    inp.classList.remove("bad");
+    ZONES.push([cityOf(tz), tz]); save(); render();
+    inp.value = ""; inp.focus();
+  }
+  $("addBtn").addEventListener("click", addZone);
+  $("addInput").addEventListener("keydown", e => { if (e.key === "Enter"){ e.preventDefault(); addZone(); } });
+  $("addInput").addEventListener("input", () => $("addInput").classList.remove("bad"));
+
+  // slider = pin a reference local time; Now = back to live
+  $("slider").addEventListener("input", () => { pinned = +$("slider").value; render(); });
+  $("nowBtn").addEventListener("click", () => { pinned = null; render(); $("addInput").blur(); });
+
+  render();
+  setInterval(render, 1000);
+})();
+</script>
+</body>
+</html>
