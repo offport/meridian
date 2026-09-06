@@ -59,7 +59,8 @@
   /* reference slider */
   .ref{margin-top:16px;padding-top:14px;border-top:1px solid var(--grid)}
   .ref input[type=range]{width:100%;accent-color:var(--accent);cursor:pointer;height:22px}
-  .ref-row{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:6px}
+  .ends{display:flex;justify-content:space-between;margin-top:-2px;font-family:var(--mono);font-size:9px;color:var(--ink3);letter-spacing:.04em}
+  .ref-row{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:8px}
   .ref-lbl{font-size:12px;color:var(--ink2);letter-spacing:.03em}
   .ref-lbl.pinned{color:var(--warm)}
 
@@ -116,21 +117,22 @@
     <div><h1>MERIDIAN<span class="sub">Time across zones</span></h1></div>
   </header>
 
-  <!-- your local time + the reference slider -->
+  <!-- the reference: a plain UTC time-of-day slider (no country) -->
   <section class="card">
-    <span class="eyebrow" id="refEyebrow">Your time</span>
+    <span class="eyebrow">Reference &middot; UTC</span>
     <div class="local">
       <div class="who">
-        <div class="city" id="locCity">&mdash;</div>
-        <div class="off" id="locOff">&mdash;</div>
+        <div class="city">Universal Time</div>
+        <div class="off">UTC &plusmn;00:00</div>
       </div>
       <div class="clk">
-        <div class="t" id="locTime">--:--:--</div>
-        <div class="d" id="locDate">&mdash;</div>
+        <div class="t" id="refTime">--:--:--</div>
+        <div class="d" id="refDate">&mdash;</div>
       </div>
     </div>
     <div class="ref">
-      <input type="range" id="slider" min="0" max="1439" step="5" value="0" aria-label="Reference time of day">
+      <input type="range" id="slider" min="0" max="1440" step="5" value="0" aria-label="Reference time of day (UTC)">
+      <div class="ends"><span>00:00</span><span>06:00</span><span>12:00</span><span>18:00</span><span>00:00</span></div>
       <div class="ref-row">
         <span class="ref-lbl" id="refLbl">Live &middot; now</span>
         <button class="btn" id="nowBtn">Now</button>
@@ -154,7 +156,6 @@
 <script>
 (() => {
   const $ = id => document.getElementById(id);
-  const LZ = Intl.DateTimeFormat().resolvedOptions().timeZone;   // your local zone
   const KEY = "meridian.zones";
   const DEFAULT = [
     ["Toronto","America/Toronto"], ["London","Europe/London"], ["Dubai","Asia/Dubai"],
@@ -166,20 +167,12 @@
   let ZONES = load();
   let pinned = null;   // minutes-of-day in your LOCAL zone, or null = live "now"
 
-  // The instant at which a given wall-clock time occurs in a zone (handles DST).
-  function zonedToInstant(zone, y, mo, d, hh, mm){
-    const asUTC = Date.UTC(y, mo, d, hh, mm);
-    const p = new Intl.DateTimeFormat("en-US",{timeZone:zone,year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hour12:false}).formatToParts(new Date(asUTC));
-    const g = t => +p.find(x => x.type===t).value;
-    const wall = Date.UTC(g("year"), g("month")-1, g("day"), g("hour")%24, g("minute"));
-    return asUTC - (wall - asUTC);
-  }
-  // The reference instant: "now", or the pinned local wall-clock time on today's local date.
+  // The reference instant: "now", or a pinned UTC time-of-day on today's UTC date. No country involved.
   function refDate(){
     if (pinned == null) return new Date();
-    const p = new Intl.DateTimeFormat("en-CA",{timeZone:LZ,year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(new Date());
+    const p = new Intl.DateTimeFormat("en-CA",{timeZone:"UTC",year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(new Date());
     const g = t => +p.find(x => x.type===t).value;
-    return new Date(zonedToInstant(LZ, g("year"), g("month")-1, g("day"), Math.floor(pinned/60), pinned%60));
+    return new Date(Date.UTC(g("year"), g("month")-1, g("day")) + pinned*60000);
   }
   const partsIn = (tz, d) => { const o = {}; new Intl.DateTimeFormat("en-CA",{timeZone:tz,year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(d).forEach(x=>o[x.type]=+x.value); return o; };
   function offset(tz, d){
@@ -201,20 +194,17 @@
 
   function render(){
     const d = refDate();
-    const locP = partsIn(LZ, d);
+    const utcP = partsIn("UTC", d);
 
-    // local header
-    $("locCity").textContent = cityOf(LZ);
-    $("locOff").textContent = offset(LZ, d);
-    $("locTime").textContent = fmtT(LZ, d);
-    $("locDate").textContent = fmtD(LZ, d);
-    $("refEyebrow").textContent = pinned == null ? "Your time · live" : "Your time · pinned";
+    // UTC reference readout
+    $("refTime").textContent = fmtT("UTC", d);
+    $("refDate").textContent = fmtD("UTC", d);
 
     // zones
     const box = $("zones");
     if (!ZONES.length){ box.innerHTML = '<div class="empty">No zones yet — add a city below.</div>'; }
     else box.innerHTML = ZONES.map(([city, tz], i) => {
-      const diff = dayDiff(tz, d, locP);
+      const diff = dayDiff(tz, d, utcP);
       const cls = diff ? (diff.startsWith("prev") || diff.startsWith("-") ? "behind" : "ahead") : "";
       return '<div class="row"><div class="left"><div class="city">'+esc(city)+'</div>'
         + '<div class="meta"><span class="off">'+esc(offset(tz,d))+'</span>'
@@ -224,15 +214,15 @@
     }).join("");
     box.querySelectorAll(".rm").forEach(b => b.addEventListener("click", () => { ZONES.splice(+b.dataset.i,1); save(); render(); }));
 
-    // slider tracks live local time when not pinned
+    // slider tracks live UTC time-of-day when not pinned
     if (pinned == null){
-      const hm = new Intl.DateTimeFormat("en-GB",{timeZone:LZ,hour:"2-digit",minute:"2-digit",hour12:false}).format(d).split(":");
+      const hm = new Intl.DateTimeFormat("en-GB",{timeZone:"UTC",hour:"2-digit",minute:"2-digit",hour12:false}).format(d).split(":");
       $("slider").value = (+hm[0])*60 + (+hm[1]);
     }
     const lbl = $("refLbl");
     lbl.classList.toggle("pinned", pinned != null);
     lbl.textContent = pinned == null ? "Live · now"
-      : "When your clock reads " + String(Math.floor(pinned/60)).padStart(2,"0") + ":" + String(pinned%60).padStart(2,"0");
+      : "UTC " + String(Math.floor(pinned/60)%24).padStart(2,"0") + ":" + String(pinned%60).padStart(2,"0");
   }
 
   // add / remove
