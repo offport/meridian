@@ -12,4 +12,12 @@ A minimal world clock — tell the time across zones at a glance.
 
 Static, offline-friendly, no accounts, no tracking. Your zone list is saved in this browser's local storage. HUD look; single-file `index.html`.
 
+## Screenshots
+
+A first visit in a private browsing window — the default zones, nothing saved yet.
+
+<p><img src="screenshots/desktop.png" width="640" alt="Desktop: the UTC reference, the slider and the zone list"> <img src="screenshots/phone.png" width="222" alt="Phone: the same clock at phone width"></p>
+
+
+
 Live: https://offport.github.io/meridian/
